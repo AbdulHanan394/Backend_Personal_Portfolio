@@ -1,0 +1,12 @@
+.env
+*.pyc
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+chroma_data/
+postgres_data/
+dist/
+build/
+

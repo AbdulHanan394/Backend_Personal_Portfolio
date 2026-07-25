@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: abdul
+          POSTGRES_PASSWORD: abdul
+          POSTGRES_DB: abdul_core
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+    env:
+      APP_SECRET_KEY: ci-secret-key-with-enough-length
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+      DATABASE_URL: postgresql+asyncpg://abdul:abdul@localhost:5432/abdul_core
+      DATABASE_URL_SYNC: postgresql://abdul:abdul@localhost:5432/abdul_core
+      REDIS_URL: redis://localhost:6379/0
+      PORTFOLIO_API_KEY: ci-portfolio-key
+      ADMIN_PASSWORD_HASH: ci-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        run: pip install uv
+      - name: Install dependencies
+        run: uv pip install --system ".[dev]"
+      - name: Lint
+        run: ruff check app tests
+      - name: Type check
+        run: mypy
+      - name: Test
+        run: pytest
+
