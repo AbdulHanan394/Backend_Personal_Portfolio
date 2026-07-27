@@ -20,6 +20,14 @@ logger = logging.getLogger(__name__)
 # size/cost for little added benefit to the summary.
 MAX_SERIALIZED_ITEMS = 20
 
+# Cap on the fallback summary string itself. This is independent of
+# MAX_SERIALIZED_ITEMS above: that constant only bounds how many
+# commits/files get serialized into the LLM prompt, not the length of any
+# individual commit message. A handful of long commit messages joined
+# together can still exceed ActivityEnrichment.summary's max_length, so the
+# fallback summary is truncated separately right before validation.
+MAX_FALLBACK_SUMMARY_LENGTH = 400
+
 
 class ActivityEnrichment(BaseModel):
     """Validated structured output from the LLM."""
@@ -50,7 +58,9 @@ class AIProcessor:
 
         Never raises. If the LLM call fails (quota, network, timeout) or
         returns invalid JSON twice in a row, falls back to a deterministic,
-        rule-based enrichment built from the activity's raw payload.
+        rule-based enrichment built from the activity's raw payload. The
+        fallback path itself is also guarded, so a bug in the fallback
+        builder degrades to a minimal enrichment instead of propagating.
         """
 
         user_prompt = _build_user_prompt(activity)
@@ -69,7 +79,7 @@ class AIProcessor:
                 getattr(activity, "id", None),
                 exc,
             )
-            return _build_fallback_enrichment(activity)
+            return _safe_fallback_enrichment(activity)
 
         try:
             result = ActivityEnrichment.model_validate_json(raw)
@@ -120,7 +130,7 @@ Your previous answer:
                     getattr(activity, "id", None),
                     exc,
                 )
-                return _build_fallback_enrichment(activity)
+                return _safe_fallback_enrichment(activity)
 
             try:
                 result = ActivityEnrichment.model_validate_json(retry_raw)
@@ -139,7 +149,52 @@ Your previous answer:
                     retry_raw,
                     exc_info=exc,
                 )
-                return _build_fallback_enrichment(activity)
+                return _safe_fallback_enrichment(activity)
+
+
+def _safe_fallback_enrichment(activity: Activity) -> ActivityEnrichment:
+    """Wrap _build_fallback_enrichment so the "never raises" contract on
+    enrich() holds even if the fallback builder itself has a bug (e.g. an
+    unbounded string that fails ActivityEnrichment validation). Degrades to
+    a minimal, title-only enrichment rather than propagating an exception.
+    """
+
+    try:
+        return _build_fallback_enrichment(activity)
+    except Exception as exc:
+        logger.error(
+            "Fallback enrichment failed for activity %s, using minimal enrichment: %s",
+            getattr(activity, "id", None),
+            exc,
+            exc_info=exc,
+        )
+        title = (activity.title or "Activity").strip()
+        return ActivityEnrichment(
+            summary=_truncate_summary(title) or "Activity",
+            tags=[],
+            technologies=[],
+            category="Other",
+        )
+
+
+def _truncate_summary(
+    summary: str, max_length: int = MAX_FALLBACK_SUMMARY_LENGTH
+) -> str:
+    """Truncate a fallback summary to fit ActivityEnrichment.summary's
+    max_length, breaking on a word boundary where possible.
+
+    This is the single place fallback summaries are bounded, so no
+    individual code path building `summary` needs to remember to cap it
+    itself (unlike raw commit messages or filenames, which have no length
+    limit in the source payload).
+    """
+
+    summary = summary.strip()
+    if len(summary) <= max_length:
+        return summary
+    # Leave room for the ellipsis character.
+    truncated = summary[: max_length - 1].rsplit(" ", 1)[0]
+    return truncated + "…"
 
 
 def _build_fallback_enrichment(activity: Activity) -> ActivityEnrichment:
@@ -184,6 +239,12 @@ def _build_fallback_enrichment(activity: Activity) -> ActivityEnrichment:
 
         if description:
             summary += f" Repository description: {description}"
+
+    # Commit messages and descriptions pulled from the raw payload have no
+    # length limit at the source (a single commit message can be several
+    # paragraphs), so the assembled summary is truncated here right before
+    # it goes into the validated model.
+    summary = _truncate_summary(summary)
 
     tags: list[str] = []
 

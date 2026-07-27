@@ -64,7 +64,9 @@ class Settings(BaseSettings):
     rag_fetch_multiplier: int = 2
     rag_max_distance: float = 4.0
 
-    github_sync_cron: str = "0 */6 * * *"
+    # github_sync_cron: str = "0 */6 * * *" real one
+    github_sync_cron: str = "*/5 * * * *"  #testing one
+
     x_sync_cron: str = "0 */6 * * *"
     scheduler_timezone: str = "Asia/Karachi"
 
