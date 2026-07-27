@@ -386,4 +386,5 @@ def _build_user_prompt(activity: Activity) -> str:
         json.dumps(prompt_payload, indent=2, default=str),
     ]
 
+
     return "\n".join(lines)
