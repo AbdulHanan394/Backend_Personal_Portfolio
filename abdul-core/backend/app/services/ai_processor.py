@@ -11,6 +11,7 @@ from pydantic import ValidationError as PydanticValidationError
 from app.ai.llm_client import GeminiLLMClient, LLMClient
 from app.ai.prompts.extract_tags import CATEGORIES, ENRICHMENT_SYSTEM_PROMPT
 from app.models.activity import Activity
+from app.ai.provider import get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,8 @@ class AIProcessor:
     """Run structured AI enrichment for activities."""
 
     def __init__(self, llm_client: LLMClient | None = None) -> None:
-        self.llm_client = llm_client or GeminiLLMClient()
+       
+        self.llm_client = llm_client or get_llm()
 
     async def enrich(self, activity: Activity) -> ActivityEnrichment:
         """Return summary, tags, technologies, and category for an activity.

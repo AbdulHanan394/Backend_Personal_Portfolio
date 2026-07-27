@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     github_api_url: str = "https://api.github.com"
     github_max_pages: int = 5
     github_events_per_page: int = 100
+ # ---------- GitHub Model ----------
+ 
+
+    github_models_api_key: str = ""
+    github_models_endpoint: str = "https://models.inference.ai.azure.com"
+    github_llm_model: str = "gpt-4o"
 
     x_bearer_token: str = ""
     x_username: str = "AbdulHanan394"

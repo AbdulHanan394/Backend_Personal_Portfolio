@@ -1,9 +1,9 @@
-"""LLM client implementations."""
-
 from abc import ABC, abstractmethod
 
 from google import genai
 from google.genai import types
+
+from openai import AsyncOpenAI
 
 from app.config.settings import get_settings
 
@@ -11,7 +11,6 @@ settings = get_settings()
 
 
 class LLMClient(ABC):
-    """Abstract interface for all LLM providers."""
 
     @abstractmethod
     async def complete(
@@ -21,12 +20,10 @@ class LLMClient(ABC):
         max_tokens: int | None = None,
         json_output: bool = False,
     ) -> str:
-        """Return the model response."""
-        raise NotImplementedError
+        ...
 
 
 class GeminiLLMClient(LLMClient):
-    """Gemini implementation of the LLM client."""
 
     async def complete(
         self,
@@ -35,19 +32,17 @@ class GeminiLLMClient(LLMClient):
         max_tokens: int | None = None,
         json_output: bool = False,
     ) -> str:
-        client = genai.Client(api_key=settings.gemini_api_key)
 
-        print("========== SYSTEM ==========")
-        print(system)
-
-        print("========== USER ==========")
-        print(user)
+        client = genai.Client(
+            api_key=settings.gemini_api_key
+        )
 
         config = types.GenerateContentConfig(
             system_instruction=system,
             max_output_tokens=max_tokens or settings.llm_max_tokens,
             temperature=0.2,
         )
+
         if json_output:
             config.response_mime_type = "application/json"
 
@@ -57,10 +52,66 @@ class GeminiLLMClient(LLMClient):
             config=config,
         )
 
-        print("========== GEMINI RESPONSE ==========")
-        print(response.text)
-
         if not response.text:
-            raise RuntimeError("Gemini returned an empty response.")
+            raise RuntimeError("Gemini returned empty response.")
 
         return response.text.strip()
+
+
+class GithubLLMClient(LLMClient):
+
+    def __init__(self):
+
+        self.client = AsyncOpenAI(
+            api_key=settings.github_models_api_key,
+            base_url=settings.github_models_endpoint,
+        )
+
+    async def complete(
+        self,
+        system: str,
+        user: str,
+        max_tokens: int | None = None,
+        json_output: bool = False,
+    ) -> str:
+
+        messages = [
+            {
+                "role": "system",
+                "content": system,
+            },
+            {
+                "role": "user",
+                "content": user,
+            },
+        ]
+
+        kwargs = {}
+
+        if json_output:
+            kwargs["response_format"] = {
+                "type": "json_object"
+            }
+
+        try:
+         response = await self.client.chat.completions.create(
+        model=settings.github_llm_model,
+        messages=messages,
+        max_tokens=max_tokens or settings.llm_max_tokens,
+        temperature=0.2,
+        **kwargs,
+         )
+        except Exception as e:
+            print("========== GITHUB ERROR ==========")
+            import traceback
+            traceback.print_exc()
+            print(type(e))
+            print(e)
+            raise
+
+        text = response.choices[0].message.content
+
+        if not text:
+            raise RuntimeError("GitHub Model returned empty response.")
+
+        return text.strip()

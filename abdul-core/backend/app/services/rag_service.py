@@ -1,13 +1,15 @@
 """Retrieval augmented assistant service."""
 
 import logging
+import traceback
 from uuid import UUID
 
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.embeddings_client import EmbeddingsClient, SentenceTransformersEmbeddingsClient
-from app.ai.llm_client import GeminiLLMClient, LLMClient
+from app.ai.llm_client import LLMClient
+from app.ai.provider import get_llm
 from app.ai.prompts.assistant_system_prompt import build_assistant_system_prompt
 from app.database.chroma import get_chroma_collection
 from app.middleware.error_handler import AIProcessingError
@@ -42,8 +44,11 @@ class RAGService:
         llm_client: LLMClient | None = None,
     ) -> None:
         self.session = session
-        self.embeddings_client = embeddings_client or SentenceTransformersEmbeddingsClient()
-        self.llm_client = llm_client or GeminiLLMClient()
+        self.embeddings_client = (
+             embeddings_client
+            or SentenceTransformersEmbeddingsClient()
+        )
+        self.llm_client = llm_client or get_llm()
 
     async def search(
         self,
@@ -213,17 +218,20 @@ Current question:
 Answer naturally using only the activities in the provided context. If the
 context doesn't contain enough information to answer, say you don't know
 instead of guessing."""
+        import traceback
 
         try:
+            print("Calling LLM...")
+            
             answer_text = await self.llm_client.complete(
                 system,
                 prompt,
-     )
-        except AIProcessingError:
+          )
+            print("LLM Successfull...")
+        except Exception:
+            print("========== LLM ERROR ==========")
+            traceback.print_exc()
             raise
-        except Exception as exc:  # noqa: BLE001
-            raise AIProcessingError(f"Failed to generate assistant answer: {exc}") from exc
-
         logger.debug("========== ANSWER ==========\n%s\n=============================", answer_text)
 
         return AnswerResult(answer=answer_text, activities=matches)
