@@ -23,10 +23,23 @@ class ActivityRepository:
     async def exists(self, source_id: UUID, external_id: str) -> bool:
         """Return whether a source/external id pair already exists."""
 
-        stmt = select(func.count()).select_from(Activity).where(
-            Activity.source_id == source_id, Activity.external_id == external_id
+        stmt = (
+            select(func.count())
+            .select_from(Activity)
+            .where(
+                Activity.source_id == source_id,
+                Activity.external_id == external_id,
+            )
         )
-        return (await self.session.scalar(stmt)) > 0
+
+        count = await self.session.scalar(stmt)
+
+        print(
+            f"[ActivityRepository.exists] source_id={source_id} "
+            f"external_id={external_id!r} count={count}"
+        )
+
+        return bool(count and count > 0)
 
     async def create(self, activity: Activity) -> Activity:
         """Persist a new activity."""
@@ -114,4 +127,3 @@ def _activity_display_query() -> Select[tuple[Activity]]:
         selectinload(Activity.technologies),
         selectinload(Activity.projects),
     )
-

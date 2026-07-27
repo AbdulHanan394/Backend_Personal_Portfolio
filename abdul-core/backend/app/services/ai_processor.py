@@ -1,5 +1,6 @@
 """AI enrichment service for summaries and metadata."""
 
+import copy
 import json
 import logging
 from typing import Any
@@ -12,6 +13,12 @@ from app.ai.prompts.extract_tags import CATEGORIES, ENRICHMENT_SYSTEM_PROMPT
 from app.models.activity import Activity
 
 logger = logging.getLogger(__name__)
+
+# Cap on how many commits/files we serialize into the LLM prompt from a
+# single push event's compare data. GitHub payloads for very active pushes
+# can carry hundreds of entries here; sending all of them balloons prompt
+# size/cost for little added benefit to the summary.
+MAX_SERIALIZED_ITEMS = 20
 
 
 class ActivityEnrichment(BaseModel):
@@ -65,19 +72,15 @@ class AIProcessor:
             return _build_fallback_enrichment(activity)
 
         try:
-            return ActivityEnrichment.model_validate_json(raw)
+            result = ActivityEnrichment.model_validate_json(raw)
+            result.tags = result.tags[:5]
+            result.technologies = result.technologies[:5]
+            return result
         except (PydanticValidationError, ValueError):
-            retry_prompt = f"""Your previous response was invalid.
+            retry_prompt = f"""
+You MUST return ONLY valid JSON.
 
-Return ONLY a valid JSON object.
-
-Do not wrap it in markdown.
-
-Do not use ```.
-
-Do not write explanations.
-
-Return exactly:
+Schema:
 
 {{
     "summary": "...",
@@ -86,11 +89,22 @@ Return exactly:
     "category": "..."
 }}
 
-Original Task:
+Rules:
+
+- summary under 300 characters
+- category must be one of:
+
+{CATEGORIES}
+
+- No markdown
+- No explanation
+- No code fences
+
+Activity:
 
 {user_prompt}
 
-Previous Response:
+Your previous answer:
 
 {raw}
 """
@@ -109,7 +123,10 @@ Previous Response:
                 return _build_fallback_enrichment(activity)
 
             try:
-                return ActivityEnrichment.model_validate_json(retry_raw)
+                result = ActivityEnrichment.model_validate_json(retry_raw)
+                result.tags = result.tags[:5]
+                result.technologies = result.technologies[:5]
+                return result
             except (PydanticValidationError, ValueError) as exc:
                 # Two consecutive invalid-JSON responses likely means a
                 # schema/prompt regression rather than a transient outage.
@@ -168,22 +185,144 @@ def _build_fallback_enrichment(activity: Activity) -> ActivityEnrichment:
         if description:
             summary += f" Repository description: {description}"
 
+    tags: list[str] = []
+
+    repo = payload.get("repo", {}).get("name")
+
+    if repo:
+        tags.append(repo)
+
+    if activity.type:
+        tags.append(activity.type.lower())
+
+    technologies: list[str] = []
+
+    compare = payload.get("payload", {}).get("compare", {})
+
+    for file in compare.get("files", []):
+
+        filename = file.get("filename", "").lower()
+
+        if filename.endswith(".py"):
+            technologies.append("Python")
+
+        elif filename.endswith(".js"):
+            technologies.append("JavaScript")
+
+        elif filename.endswith(".ts"):
+            technologies.append("TypeScript")
+
+        elif filename.endswith(".tsx"):
+            technologies.append("React")
+
+        elif filename.endswith(".go"):
+            technologies.append("Go")
+
     return ActivityEnrichment(
         summary=summary,
-        tags=[],
-        technologies=[],
+        tags=list(dict.fromkeys(tags))[:5],
+        technologies=list(dict.fromkeys(technologies))[:5],
         category="Other",
     )
 
 
-def _build_user_prompt(activity: Activity) -> str:
-    """Build the LLM user prompt from an activity."""
+def _safe_payload_dict(activity: Activity) -> dict[str, Any]:
+    """Return activity.raw_payload as a dict, or {} if missing/non-dict.
 
-    payload: dict[str, Any] = {
-        "title": activity.title,
-        "description": getattr(activity, "description", None),
-        "type": activity.type,
-        "source": activity.source.slug if activity.source else None,
-        "raw_payload": activity.raw_payload,
-    }
-    return json.dumps(payload, default=str)
+    raw_payload can be None, a dict, or (for some sources) a plain string,
+    so anything that needs to key into it should go through this first.
+    """
+
+    payload = activity.raw_payload
+
+    return payload if isinstance(payload, dict) else {}
+
+
+def _capped_payload_for_prompt(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of payload with large commit/file arrays truncated.
+
+    GitHub payloads for very active pushes can carry hundreds of commits
+    or changed files; sending all of them to the LLM balloons prompt size
+    and cost for little benefit to the summary, so we cap them here while
+    leaving everything else in the raw event untouched.
+    """
+
+    if not payload:
+        return {}
+
+    capped = copy.deepcopy(payload)
+
+    compare = capped.get("payload", {}).get("compare")
+
+    if isinstance(compare, dict):
+
+        commits = compare.get("commits")
+        if isinstance(commits, list) and len(commits) > MAX_SERIALIZED_ITEMS:
+            omitted = len(commits) - MAX_SERIALIZED_ITEMS
+            compare["commits"] = commits[:MAX_SERIALIZED_ITEMS]
+            compare["commits_omitted"] = omitted
+
+        files = compare.get("files")
+        if isinstance(files, list) and len(files) > MAX_SERIALIZED_ITEMS:
+            omitted = len(files) - MAX_SERIALIZED_ITEMS
+            compare["files"] = files[:MAX_SERIALIZED_ITEMS]
+            compare["files_omitted"] = omitted
+
+    return capped
+
+
+def _build_user_prompt(activity: Activity) -> str:
+    """Build a rich prompt including the full (size-capped) raw payload,
+    so the LLM can see repository, commits, changed files, branch, PR
+    details, release notes, etc. instead of just the activity title.
+    """
+
+    payload = _safe_payload_dict(activity)
+    source_slug = activity.source.slug if activity.source else "unknown"
+
+    repo_name = ""
+    if source_slug == "github":
+        repo = payload.get("repo")
+        if isinstance(repo, dict):
+            repo_name = repo.get("name", "")
+
+    prompt_payload = _capped_payload_for_prompt(payload)
+
+    lines = [
+        f"You are given a {source_slug} activity.",
+        "",
+        "Write:",
+        "",
+        "1. A concise professional summary (2-4 sentences)",
+        "2. Up to 5 technologies",
+        "3. Up to 5 tags",
+        "4. One category",
+        "",
+        "Return ONLY valid JSON.",
+        "",
+        "Activity",
+        "",
+        "Title:",
+        activity.title,
+        "",
+        "Type:",
+        activity.type,
+    ]
+
+    if repo_name:
+        lines += ["", "Repository:", repo_name]
+
+    lines += [
+        "",
+        "URL:",
+        str(activity.url or ""),
+        "",
+        "Occurred:",
+        str(activity.occurred_at),
+        "",
+        f"Raw {source_slug.title()} Event:",
+        "",
+        json.dumps(prompt_payload, indent=2, default=str),
+    ]
+
+    return "\n".join(lines)

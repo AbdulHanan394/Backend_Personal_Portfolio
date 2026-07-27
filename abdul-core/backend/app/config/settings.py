@@ -6,7 +6,6 @@ from typing import Literal
 from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 class Settings(BaseSettings):
     """Runtime configuration for the Abdul Core service."""
 
@@ -34,6 +33,11 @@ class Settings(BaseSettings):
     github_token: str = ""
     github_username: str = "AbdulHanan394"
 
+    # ---------- GitHub ----------
+    github_api_url: str = "https://api.github.com"
+    github_max_pages: int = 5
+    github_events_per_page: int = 100
+
     x_bearer_token: str = ""
     x_username: str = "AbdulHanan394"
     linkedin_enabled: bool = False
@@ -45,7 +49,20 @@ class Settings(BaseSettings):
     llm_model: str = "gemini-3.5-flash"
     llm_max_tokens: int = 1000
 
+    # ---------- AI ----------
+    ai_enabled: bool = True
+    ai_summary_max_length: int = 400
+
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+
+    # ---------- Embeddings ----------
+    embedding_enabled: bool = True
+    embedding_chunk_size: int = 1000
+
+    # ---------- RAG ----------
+    rag_search_limit: int = 8
+    rag_fetch_multiplier: int = 2
+    rag_max_distance: float = 4.0
 
     github_sync_cron: str = "0 */6 * * *"
     x_sync_cron: str = "0 */6 * * *"

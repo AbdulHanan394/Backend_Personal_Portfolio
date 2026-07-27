@@ -58,15 +58,20 @@ class ActivityService:
             normalized.source_slug
         )
 
-        deduplicator = Deduplicator(
-            self.activity_repo
-        )
+        deduplicator = Deduplicator(self.activity_repo)
 
-        if await deduplicator.is_duplicate(
+        print("SOURCE ID:", source.id)
+        print("EXTERNAL ID:", normalized.external_id)
+
+        is_dup = await deduplicator.is_duplicate(
             source.id,
             normalized.external_id,
-        ):
-            return None
+          )
+
+        print("IS DUPLICATE:", is_dup)
+
+        if is_dup:
+         return None
 
 
         activity = Activity(

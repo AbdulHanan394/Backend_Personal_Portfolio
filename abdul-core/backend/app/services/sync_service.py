@@ -1,6 +1,7 @@
 """Collector-to-storage synchronization service."""
 
 from dataclasses import dataclass
+import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,8 @@ from app.repositories.source_repo import SourceRepository
 from app.services.activity_service import ActivityService
 from app.services.normalizer import normalize
 from app.utils.time import utc_now
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -36,7 +39,7 @@ class SyncService:
         self.session = session
 
     async def run(self, source_slug: str) -> SyncResult:
-        """Run one collector through normalization, enrichment and storage."""
+        """Run one collector through the full processing pipeline."""
 
         source = await SourceRepository(self.session).get_by_slug(source_slug)
         if source is None:
@@ -50,67 +53,73 @@ class SyncService:
             ) from exc
 
         raw_items = await collector.fetch_raw(source.last_synced_at)
-
+        logger.info("Fetched %d raw items", len(raw_items))
         activity_service = ActivityService(self.session)
         result = SyncResult()
 
-        for raw in raw_items:
+        for index, raw in enumerate(raw_items, start=1):
+            logger.debug("Processing #%d", index)
             try:
-                # --------------------------------------------------
-                # Normalize
-                # --------------------------------------------------
+                # ---------------------------------------------
+                # STEP 1 - Normalize
+                # ---------------------------------------------
                 normalized = normalize(source_slug, raw)
+                logger.debug("Normalized: %s", normalized.external_id)
 
-                # --------------------------------------------------
-                # Store in PostgreSQL
-                # --------------------------------------------------
+                # ---------------------------------------------
+                # STEP 2 - Store in PostgreSQL
+                # ---------------------------------------------
                 activity = await activity_service.insert_normalized(normalized)
-
-                # Duplicate activity
+                print("INSERT:", activity)
+                # Skip duplicates
                 if activity is None:
                     continue
 
-                # --------------------------------------------------
-                # AI ENRICHMENT (OPTIONAL)
-                # --------------------------------------------------
+                # ---------------------------------------------
+                # STEP 3 - AI Enrichment
+                # ---------------------------------------------
                 try:
-                    await activity_service.enrich_activity(activity)
+                    activity = await activity_service.enrich_activity(activity)
+                    print("ENRICH:", activity.id)
+                except Exception:
+                    logger.exception(
+                        "AI enrichment failed for activity %s",
+                        activity.id,
+                    )
 
-                except Exception as exc:
-                    print(f"AI enrichment failed: {exc}")
-
-                    # Fallback summary so RAG still works
                     activity.summary = activity.title
-                    activity.category = "Other"
-
-                    # Preserve pipeline
+                    activity.category = "other"
                     activity.status = "summarized"
 
                     await self.session.flush()
 
-                # --------------------------------------------------
-                # EMBEDDING + PUBLISH (OPTIONAL)
-                # --------------------------------------------------
+                # ---------------------------------------------
+                # STEP 4 - Embedding + Publish
+                # ---------------------------------------------
                 try:
-                    await activity_service.embed_and_publish(activity)
+                    activity = await activity_service.embed_and_publish(activity)
+                    print("EMBED:", activity.id)
+                except Exception:
+                    logger.exception(
+                        "Embedding failed for activity %s",
+                        activity.id,
+                    )
 
-                except Exception as exc:
-                    print(f"Embedding failed: {exc}")
-
-                    # Keep the activity searchable later
+                    # Keep activity available for retry
                     activity.status = "summarized"
 
                     await self.session.flush()
 
                 result.processed += 1
-
-            except Exception as exc:
+                logger.debug("Processed activity #%d successfully", index)
+            except Exception:
+                logger.exception("Failed processing activity")
                 result.failed += 1
-                print(f"Failed to process activity: {exc}")
 
         if raw_items:
             source.last_synced_at = utc_now()
-
+        print("ABOUT TO COMMIT")
         await self.session.commit()
-
+        print("COMMIT DONE")
         return result
+

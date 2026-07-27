@@ -2,35 +2,63 @@ services:
   api:
     build:
       context: ../backend
+
+    container_name: abdul-api
+    user: root
     env_file:
       - ../backend/.env
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+    working_dir: /app
+
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+
     volumes:
       - ../backend:/app
       - chroma_data:/app/chroma_data
+
     ports:
       - "8000:8000"
+
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+
+    restart: unless-stopped
 
   postgres:
     image: postgres:16
+
+    container_name: abdul-postgres
+
     environment:
       POSTGRES_USER: abdul
       POSTGRES_PASSWORD: abdul
       POSTGRES_DB: abdul_core
+
     ports:
       - "5432:5432"
+
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+    restart: unless-stopped
+
   redis:
     image: redis:7
+
+    container_name: abdul-redis
+
     ports:
       - "6379:6379"
+
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   chroma_data:
-
