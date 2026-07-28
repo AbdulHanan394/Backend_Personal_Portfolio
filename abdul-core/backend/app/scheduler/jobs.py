@@ -15,13 +15,16 @@ LOCK_KEYS = {
 
 async def run_source_sync(source_slug: str) -> None:
     """Run a source sync and record scheduler status."""
-
+    print("\n========== SYNC START ==========")
+    print("SOURCE:", source_slug)
     async with AsyncSessionLocal() as session:
         repo = SchedulerLogRepository(session)
         log = await repo.start(f"{source_slug}_sync", utc_now())
         await session.commit()
         lock_key = LOCK_KEYS.get(source_slug, 120260700)
+        print("Trying advisory lock...")
         acquired = await session.scalar(text("select pg_try_advisory_lock(:key)"), {"key": lock_key})
+        print("Advisory lock result:", acquired)
         if not acquired:
             await repo.finish(
                 log,
@@ -54,6 +57,7 @@ async def run_source_sync(source_slug: str) -> None:
         finally:
             await session.execute(text("select pg_advisory_unlock(:key)"), {"key": lock_key})
         await session.commit()
+        print("SyncService.run() FINISHED")
 
 
 async def resume_stuck_pipeline() -> None:

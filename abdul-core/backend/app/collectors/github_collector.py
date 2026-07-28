@@ -24,7 +24,7 @@ class GitHubCollector(BaseCollector):
         "ReleaseEvent",
         "CreateEvent",
     }
-
+    print("\n===== GitHubCollector.fetch_raw =====")
     async def fetch_raw(self, since: datetime | None) -> list[dict]:
         settings = get_settings()
 
@@ -62,9 +62,9 @@ class GitHubCollector(BaseCollector):
             logger.debug("github_repos_fetched", count=len(repo_data))
 
             for page_num in range(settings.github_max_pages):
-
+                
                 response = await client.get(url, headers=headers)
-
+                print("Status:", response.status_code)
                 if response.status_code >= 400:
                     raise CollectorError(
                         f"GitHub API returned {response.status_code}"
