@@ -66,12 +66,12 @@ class ActivityService:
         is_dup = await deduplicator.is_duplicate(
             source.id,
             normalized.external_id,
-          )
+        )
 
         print("IS DUPLICATE:", is_dup)
 
         if is_dup:
-         return None
+            return None
 
 
         activity = Activity(
@@ -113,12 +113,26 @@ class ActivityService:
         """
         Insert manual portfolio/resume data.
         Includes social links in searchable content.
+
+        The activity's primary `url` always comes directly from
+        `request.url` (works for GitHub projects, LinkedIn posts,
+        blog posts, X posts, etc). `social_links` is used ONLY to
+        enrich the summary text and is never used to populate the
+        `url` field, since hardcoding a single platform there caused
+        every other activity type to get an empty or wrong URL.
         """
 
 
-        source = await self._require_source(
-            "portfolio"
-        )
+        if request.type in ("linkedin", "linkedin_post"):
+            source_slug = "linkedin"
+        elif request.type in ("x", "tweet", "x_post"):
+            source_slug = "x"
+        elif request.type in ("github", "github_activity"):
+            source_slug = "github"
+        else:
+            source_slug = "portfolio"
+
+        source = await self._require_source(source_slug)
 
 
         technologies = [
@@ -151,24 +165,24 @@ class ActivityService:
         )
 
 
-        enhanced_summary = f"""
-{request.summary}
+        links = []
 
+        if social_links.get("github"):
+            links.append(f"GitHub: {social_links['github']}")
 
-Social Links:
+        if social_links.get("linkedin"):
+            links.append(f"LinkedIn: {social_links['linkedin']}")
 
-GitHub:
-{social_links.get("github", "")}
+        if social_links.get("x"):
+            links.append(f"X: {social_links['x']}")
 
-LinkedIn:
-{social_links.get("linkedin", "")}
+        if social_links.get("portfolio"):
+            links.append(f"Portfolio: {social_links['portfolio']}")
 
-X:
-{social_links.get("x", "")}
+        enhanced_summary = request.summary or ""
 
-Portfolio:
-{social_links.get("portfolio", "")}
-"""
+        if links:
+            enhanced_summary += "\n\nSocial Links:\n\n" + "\n".join(links)
 
 
         activity = Activity(
@@ -189,10 +203,7 @@ Portfolio:
 
             raw_payload=payload,
 
-            url=social_links.get(
-                "linkedin",
-                ""
-            ),
+            url=request.url or "",
 
             occurred_at=utc_now(),
 
