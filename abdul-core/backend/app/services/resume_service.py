@@ -49,6 +49,78 @@ AI engineering experience, and technical specialization.
 
 
         # -------------------------
+        # Social Links
+        # -------------------------
+
+        if resume.social_links:
+
+            github = resume.social_links.github or "Not provided"
+            linkedin = resume.social_links.linkedin or "Not provided"
+            x = resume.social_links.x or "Not provided"
+            portfolio = resume.social_links.portfolio or "Not provided"
+
+            await self._create_embedding_activity(
+                title="Official Social Profiles",
+                content=f"""
+PERSON:
+Abdul Hanan
+
+OFFICIAL SOCIAL LINKS
+
+Official GitHub Profile:
+{github}
+
+Official LinkedIn Profile:
+{linkedin}
+
+Official X Profile:
+{x}
+
+Official Portfolio Website:
+{portfolio}
+
+These are the official public profiles of Abdul Hanan.
+
+These are the official public profiles of Abdul Hanan.
+
+If a user asks for any of the following, always return the corresponding official URL:
+
+- GitHub
+- GitHub profile
+- GitHub account
+- LinkedIn
+- LinkedIn profile
+- LinkedIn account
+- X
+- X profile
+- X account
+- Twitter
+- Portfolio
+- Portfolio website
+- Website
+- Personal website
+- Social links
+- Social media
+- Contact links
+- Official profile
+Return the corresponding official URL.
+""",
+                activity_type="profile",
+                category="Profile",
+                tags=["Resume", "Profile", "Social"],
+                url=resume.social_links.linkedin or resume.social_links.portfolio or "",
+                raw_payload={
+                    "social_links": {
+                        "github": github,
+                        "linkedin": linkedin,
+                        "x": x,
+                        "portfolio": portfolio,
+                    }
+                },
+            )
+
+
+        # -------------------------
         # Skills
         # -------------------------
 
@@ -200,6 +272,8 @@ This represents Abdul Hanan's academic background.
         activity_type: str,
         category: str,
         tags: list[str],
+        url: str = "",
+        raw_payload: dict | None = None,
     ):
 
         """
@@ -221,7 +295,9 @@ This represents Abdul Hanan's academic background.
 
             category=category,
 
-            url=""
+            url=url,
+
+            raw_payload=raw_payload or {},
 
         )
 
