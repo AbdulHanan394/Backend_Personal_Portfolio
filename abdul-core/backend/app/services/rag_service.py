@@ -1,6 +1,7 @@
 """Retrieval augmented assistant service."""
 
 import logging
+from multiprocessing import context
 import traceback
 from uuid import UUID
 
@@ -187,6 +188,13 @@ URL:
             raise AIProcessingError("Question must not be empty")
 
         matches = await self.search(question, limit=8, max_distance=_MAX_DISTANCE)
+        print("\n===== MATCHES =====")
+        print("Count:", len(matches))
+
+        for m in matches:
+            print("----------------")
+            print("Title:", m.title)
+            print("Summary:", m.summary[:150])
         unique = {}
 
         for activity in matches:
@@ -201,6 +209,8 @@ URL:
 
         matches = list(unique.values())
         context = self._build_context(matches)
+        print("\n===== CONTEXT =====")
+        print(context)
         logger.debug("========== CONTEXT ==========\n%s\n=============================", context)
 
         system = build_assistant_system_prompt(context)
