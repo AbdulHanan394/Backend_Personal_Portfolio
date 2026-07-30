@@ -188,6 +188,11 @@ URL:
             raise AIProcessingError("Question must not be empty")
 
         matches = await self.search(question, limit=8, max_distance=_MAX_DISTANCE)
+        print("\n===== SEARCH RESULTS =====")
+        for i, m in enumerate(matches, 1):
+            print(i, m.title)
+            print(m.summary[:200])
+            print()
         print("\n===== MATCHES =====")
         print("Count:", len(matches))
 
