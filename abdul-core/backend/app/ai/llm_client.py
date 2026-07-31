@@ -95,6 +95,7 @@ class GithubLLMClient(LLMClient):
 
         try:
          response = await self.client.chat.completions.create(
+             
         model=settings.github_llm_model,
         messages=messages,
         max_tokens=max_tokens or settings.llm_max_tokens,

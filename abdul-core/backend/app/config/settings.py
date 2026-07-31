@@ -34,15 +34,15 @@ class Settings(BaseSettings):
     github_username: str = "AbdulHanan394"
 
     # ---------- GitHub ----------
-    github_api_url: str = "https://api.github.com"
+    github_api_url: str = "https://api.groq.com/openai/v1"
     github_max_pages: int = 5
     github_events_per_page: int = 100
  # ---------- GitHub Model ----------
  
 
     github_models_api_key: str = ""
-    github_models_endpoint: str = "https://models.inference.ai.azure.com"
-    github_llm_model: str = "gpt-4o"
+    github_models_endpoint: str = "https://api.groq.com/openai/v1"
+    github_llm_model: str = "grok-4-fast"
 
     x_bearer_token: str = ""
     x_username: str = "AbdulHanan394"
