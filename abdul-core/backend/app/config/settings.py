@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     database_url_sync: str
     redis_url: str
 
-    chroma_persist_dir: str = "./chroma_data"
+    chroma_persist_dir: str = "/app/chroma_data"
     chroma_collection_name: str = "abdul_activities"
 
     # ------------------------------------------------------------------
