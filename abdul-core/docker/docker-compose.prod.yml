@@ -17,7 +17,6 @@ services:
       - postgres
       - redis
 
-
   postgres:
     image: postgres:16
 
@@ -34,7 +33,6 @@ services:
       # Application database
       - postgres_data:/var/lib/postgresql/data
 
-
   redis:
     image: redis:7
 
@@ -45,7 +43,6 @@ services:
     volumes:
       # Redis persistence
       - redis_data:/data
-
 
   nginx:
     image: nginx:1.27-alpine
@@ -63,7 +60,6 @@ services:
 
     depends_on:
       - api
-
 
 volumes:
   postgres_data:

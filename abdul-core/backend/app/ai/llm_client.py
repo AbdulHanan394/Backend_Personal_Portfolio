@@ -33,9 +33,7 @@ class GeminiLLMClient(LLMClient):
         json_output: bool = False,
     ) -> str:
 
-        client = genai.Client(
-            api_key=settings.gemini_api_key
-        )
+        client = genai.Client(api_key=settings.gemini_api_key)
 
         config = types.GenerateContentConfig(
             system_instruction=system,
@@ -61,7 +59,6 @@ class GeminiLLMClient(LLMClient):
 class GithubLLMClient(LLMClient):
 
     def __init__(self):
-
         self.client = AsyncOpenAI(
             api_key=settings.github_models_api_key,
             base_url=settings.github_models_endpoint,
@@ -76,43 +73,80 @@ class GithubLLMClient(LLMClient):
     ) -> str:
 
         messages = [
-            {
-                "role": "system",
-                "content": system,
-            },
-            {
-                "role": "user",
-                "content": user,
-            },
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
         ]
 
         kwargs = {}
 
         if json_output:
-            kwargs["response_format"] = {
-                "type": "json_object"
-            }
+            kwargs["response_format"] = {"type": "json_object"}
 
         try:
-         response = await self.client.chat.completions.create(
-             
-        model=settings.github_llm_model,
-        messages=messages,
-        max_tokens=max_tokens or settings.llm_max_tokens,
-        temperature=0.2,
-        **kwargs,
-         )
-        except Exception as e:
+            response = await self.client.chat.completions.create(
+                model=settings.github_llm_model,
+                messages=messages,
+                max_tokens=max_tokens or settings.llm_max_tokens,
+                temperature=0.2,
+                **kwargs,
+            )
+        except Exception:
             print("========== GITHUB ERROR ==========")
             import traceback
             traceback.print_exc()
-            print(type(e))
-            print(e)
             raise
 
         text = response.choices[0].message.content
 
         if not text:
             raise RuntimeError("GitHub Model returned empty response.")
+
+        return text.strip()
+
+
+class GroqLLMClient(LLMClient):
+
+    def __init__(self):
+        self.client = AsyncOpenAI(
+            api_key=settings.groq_api_key,
+            base_url=settings.groq_base_url,
+        )
+
+    async def complete(
+        self,
+        system: str,
+        user: str,
+        max_tokens: int | None = None,
+        json_output: bool = False,
+    ) -> str:
+
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
+
+        kwargs = {}
+
+        if json_output:
+            kwargs["response_format"] = {"type": "json_object"}
+
+        try:
+            response = await self.client.chat.completions.create(
+                model=settings.groq_model,
+                messages=messages,
+                max_tokens=max_tokens or settings.llm_max_tokens,
+                temperature=0.2,
+                **kwargs,
+            )
+        except Exception:
+            print("========== GROQ ERROR ==========")
+            import traceback
+            traceback.print_exc()
+            raise
+
+        text = response.choices[0].message.content
+
+        if not text:
+            raise RuntimeError("Groq returned empty response.")
 
         return text.strip()
