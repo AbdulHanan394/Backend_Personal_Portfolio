@@ -20,7 +20,6 @@ def get_chroma_collection():
     client = chromadb.PersistentClient(
         path=settings.chroma_persist_dir
     )
-
     collection = client.get_or_create_collection(
         settings.chroma_collection_name
     )
