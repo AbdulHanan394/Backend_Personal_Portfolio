@@ -23,7 +23,6 @@ def get_chroma_collection():
     collection = client.get_or_create_collection(
         settings.chroma_collection_name
     )
-
     print("COLLECTION COUNT:", collection.count())
 
     return collection
